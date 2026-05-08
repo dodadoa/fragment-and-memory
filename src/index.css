@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+/*
+ * Interface palette:
+ *   Black        #0a0908
+ *   Jet Black    #22333b
+ *   Soft Linen   #eae0d5
+ *   Tan          #c6ac8f
+ *   Stone Brown  #5e503f
+ */
+:root {
+  --bg:          #f3ece4;
+  --bg-sidebar:  #fbf7f2;
+  --bg-panel:    #d3c1ac;
+  --border:      rgba(34, 51, 59, 0.14);
+  --border-mid:  rgba(34, 51, 59, 0.28);
+  --ink-1:       #0a0908;
+  --ink-2:       #22333b;
+  --ink-3:       #5e503f;
+  --ink-4:       #8d7b66;
+  --accent:      #c6ac8f;
+
+  --background: var(--bg);
+  --foreground: var(--ink-1);
+
+  /* glassmorphism tokens */
+  --glass-bg: rgba(255, 255, 255, 0.24);
+  --glass-bg-strong: rgba(255, 255, 255, 0.3);
+  --glass-stroke: rgba(255, 255, 255, 0.4);
+  --glass-shadow: 0 8px 24px rgba(34, 51, 59, 0.1), 0 1px 6px rgba(34, 51, 59, 0.05);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--app-font-sans, "Smooch Sans", "Inter", "Segoe UI", system-ui, sans-serif);
+  --font-mono: var(--app-font-mono, "JetBrains Mono", "Fira Code", ui-monospace, monospace);
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background:
+    radial-gradient(1200px 800px at 10% -10%, rgba(198, 172, 143, 0.35), transparent 60%),
+    radial-gradient(1000px 700px at 100% 0%, rgba(255, 255, 255, 0.45), transparent 55%),
+    linear-gradient(145deg, #f8f4ef 0%, #efe7dc 45%, #e9ddd1 100%);
+  color: var(--ink-1);
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: calc(15px * var(--app-font-scale, 1));
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(1.08);
+  -webkit-backdrop-filter: blur(16px) saturate(1.08);
+  border: 1px solid var(--glass-stroke);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-panel-strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(20px) saturate(1.1);
+  -webkit-backdrop-filter: blur(20px) saturate(1.1);
+  border: 1px solid rgba(255, 255, 255, 0.48);
+  box-shadow: var(--glass-shadow);
+}
+
+/* ── Custom thin scrollbar for sidebar ─────────────────────────────────────── */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120,110,100,0.25) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar       { width: 3px; }
+.sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(120,110,100,0.22);
+  border-radius: 2px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100,90,80,0.38);
+}
+
+/* ── Trace mark animation ───────────────────────────────────────────────────── */
+@keyframes traceFade {
+  0%   { opacity: 0.45; transform: translate(-50%, -50%) scale(1); }
+  40%  { opacity: 0.14; }
+  100% { opacity: 0;    transform: translate(-50%, -50%) scale(0.12); }
+}
+
+/* ── Gentle bloom pulse on active/touched nodes ────────────────────────────── */
+@keyframes nodePulse {
+  0%, 100% { box-shadow: var(--node-glow-near); }
+  50%       { box-shadow: var(--node-glow-far); }
+}
