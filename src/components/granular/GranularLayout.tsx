@@ -4,8 +4,9 @@ import { Loader } from "./Loader";
 import { NodeCanvas } from "./NodeCanvas";
 import { ReverbControls } from "./ReverbControls";
 import { SoundControls } from "./SoundControls";
+import { StackingMemoryPanel } from "./StackingMemoryPanel";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export function GranularLayout(props: GranularViewModel) {
   const theme = useTheme();
@@ -36,12 +37,16 @@ export function GranularLayout(props: GranularViewModel) {
     setReverbSize,
     reverbDrive,
     setReverbDrive,
+    grainOutputLevel,
+    setGrainOutputLevel,
     diffusionReverbMix,
     setDiffusionReverbMix,
     diffusionReverbSize,
     setDiffusionReverbSize,
     diffusionReverbDrive,
     setDiffusionReverbDrive,
+    diffusionOutputLevel,
+    setDiffusionOutputLevel,
     diffusionFeedback,
     setDiffusionFeedback,
     diffusionDelayMs,
@@ -52,15 +57,19 @@ export function GranularLayout(props: GranularViewModel) {
     setSpectralReverbSize,
     spectralReverbDrive,
     setSpectralReverbDrive,
+    spectralOutputLevel,
+    setSpectralOutputLevel,
     layerReverbMix,
     setLayerReverbMix,
     layerReverbSize,
     setLayerReverbSize,
     layerReverbDrive,
     setLayerReverbDrive,
+    layerOutputLevel,
+    setLayerOutputLevel,
     onFileInput,
     onDrop,
-    updateAllSounds,
+    updateActiveSound,
     remapAllSounds,
     removeSound,
     flash,
@@ -73,14 +82,27 @@ export function GranularLayout(props: GranularViewModel) {
     removeCrystal,
     crystalLevel,
     setCrystalLevel,
-    stretchFactor,
-    setStretchFactor,
     palimpsestLayers,
     isPalimpsestRecording,
     startPalimpsestRecording,
     stopPalimpsestRecording,
     clearPalimpsest,
   } = props;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el?.closest("input, textarea, select, [contenteditable=true]")) return;
+      if (e.key !== "r" && e.key !== "R") return;
+      if (sounds.length === 0) return;
+      e.preventDefault();
+      if (isPalimpsestRecording) stopPalimpsestRecording();
+      else startPalimpsestRecording();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sounds.length, isPalimpsestRecording, startPalimpsestRecording, stopPalimpsestRecording]);
 
   return (
     <div
@@ -141,123 +163,145 @@ export function GranularLayout(props: GranularViewModel) {
               </button>
             </div>
           )}
-          <div style={{ width: 1, height: 18, background: theme.colors.borderMid }} />
-          <label className="flex items-center gap-2" style={{ fontSize: fs(11), color: theme.colors.ink3 }}>
-            master
-            <input
-              type="range"
-              min={0} max={1} step={0.01}
-              value={masterVolume}
-              onChange={(e) => setMasterVolume(parseFloat(e.target.value))}
-              className="w-24"
-              style={{ accentColor: "var(--accent)" }}
-            />
-          </label>
         </div>
       </header>
 
       <div className="flex flex-1 min-h-0 flex-col lg:flex-row">
         <aside
-          className="glass-panel sidebar-scroll w-full lg:w-64 flex flex-col overflow-y-auto shrink-0 rounded-xl m-2 mr-1"
+          className="glass-panel sidebar-scroll w-full lg:w-64 flex flex-col overflow-y-auto shrink-0 min-h-0 rounded-xl m-2 mr-1"
           style={{ borderRight: `1px solid ${theme.colors.borderMid}` }}
         >
           <Loader isLoading={isLoading} error={loadError} onFileInput={onFileInput} onDrop={onDrop} />
-          <div className="flex-1">
-            {sounds.length === 0 ? (
-              <p className="p-4" style={{ fontSize: fs(11), color: theme.colors.ink3 }}>
-                no sounds loaded — drop a file above to begin
-              </p>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setSoundsExpanded((v) => !v)}
-                  className="w-full text-left px-3 py-1.5 border-b transition-opacity hover:opacity-80"
-                  style={{ borderColor: theme.colors.border, background: "rgba(255,255,255,0.14)" }}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate" style={{ fontSize: fs(10), color: theme.colors.ink2 }}>
-                      {activeSound?.name ?? sounds[0]?.name} · {sounds.length} sound{sounds.length > 1 ? "s" : ""}
-                    </span>
-                    <span style={{ fontSize: fs(10), color: theme.colors.ink3 }}>
-                      {soundsExpanded ? "▾" : "▸"}
-                    </span>
-                  </div>
-                </button>
-                {soundsExpanded && (
-              <ul>
-                {sounds.map((sound) => (
-                  <li
-                    key={sound.id}
-                    className="cursor-pointer transition-all"
-                    style={{
-                      padding: "5px 10px",
-                      borderBottom: `1px solid ${theme.colors.border}`,
-                      background: activeSoundId === sound.id ? `${theme.colors.ink2}08` : "transparent",
-                    }}
-                    onClick={() => setActiveSoundId(sound.id)}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span
-                          className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
-                          style={{
-                            background: sound.color,
-                            boxShadow: `0 0 8px ${sound.color}88, 0 0 20px ${sound.color}44`,
-                          }}
-                        />
-                        <span className="truncate" style={{ fontSize: fs(11), fontWeight: 700, color: "var(--ink-1)" }}>{sound.name}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); removeSound(sound.id); }}
-                        className="transition-opacity hover:opacity-60"
-                        style={{ fontSize: fs(10), color: theme.colors.ink3 }}
-                        aria-label={`Remove ${sound.name}`}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    <p className="mt-0.5 tabular-nums" style={{ fontSize: fs(9), color: theme.colors.ink3 }}>
-                      {sound.buffer.duration.toFixed(2)}s · {sound.layers} layers · {sound.nodes.length} nodes
-                    </p>
-                  </li>
-                ))}
-              </ul>
-                )}
-              </>
-            )}
+
+          {/* Master volume */}
+          <div
+            className="px-3 py-2 shrink-0 flex items-center gap-3 border-b"
+            style={{ borderColor: theme.colors.border }}
+          >
+            <span className="shrink-0" style={{ fontSize: fs(10), color: theme.colors.ink3, letterSpacing: "0.06em" }}>
+              master
+            </span>
+            <input
+              type="range"
+              min={0} max={1} step={0.01}
+              value={masterVolume}
+              onChange={(e) => setMasterVolume(parseFloat(e.target.value))}
+              className="flex-1 min-w-0"
+              style={{ accentColor: "var(--accent)" }}
+              aria-label="Master volume"
+            />
           </div>
-          {sounds.length > 0 ? (
-            <>
-              <SoundControls
-                sound={activeSound ?? sounds[0]}
-                onChange={updateAllSounds}
-                onRemap={remapAllSounds}
-              />
+
+          {/* Sounds collapsible — just for switching; controls always show below */}
+          {sounds.length === 0 ? (
+            <p className="p-4 shrink-0" style={{ fontSize: fs(11), color: theme.colors.ink3 }}>
+              no sounds loaded — drop a file above to begin
+            </p>
+          ) : (
+            <div className="shrink-0 border-b" style={{ borderColor: theme.colors.border }}>
+              <button
+                type="button"
+                onClick={() => setSoundsExpanded((v) => !v)}
+                className="w-full text-left px-3 py-2 transition-opacity hover:opacity-80"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate" style={{ fontSize: fs(10), color: theme.colors.ink2 }}>
+                    {activeSound?.name ?? sounds[0]?.name} · {sounds.length} sound{sounds.length > 1 ? "s" : ""}
+                  </span>
+                  <span style={{ fontSize: fs(10), color: theme.colors.ink3 }}>
+                    {soundsExpanded ? "▾" : "▸"}
+                  </span>
+                </div>
+              </button>
+              {soundsExpanded && (
+                <ul style={{ borderTop: `1px solid ${theme.colors.border}` }}>
+                  {sounds.map((sound) => (
+                    <li
+                      key={sound.id}
+                      className="cursor-pointer transition-colors"
+                      style={{
+                        padding: "5px 10px",
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        background: activeSoundId === sound.id
+                          ? "rgba(34,51,59,0.06)"
+                          : "rgba(255,255,255,0.12)",
+                      }}
+                      onClick={() => setActiveSoundId(sound.id)}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+                            style={{
+                              background: sound.color,
+                              boxShadow: `0 0 8px ${sound.color}88, 0 0 20px ${sound.color}44`,
+                            }}
+                          />
+                          <span className="truncate" style={{ fontSize: fs(11), fontWeight: 700, color: theme.colors.ink1 }}>
+                            {sound.name}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); removeSound(sound.id); }}
+                          className="transition-opacity hover:opacity-60 shrink-0"
+                          style={{ fontSize: fs(10), color: theme.colors.ink3 }}
+                          aria-label={`Remove ${sound.name}`}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <p className="mt-0.5 tabular-nums" style={{ fontSize: fs(9), color: theme.colors.ink3 }}>
+                        {sound.buffer.duration.toFixed(2)}s · {sound.layers} layers · {sound.nodes.length} nodes
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {/* Per-sound grain controls — always visible when a sound is loaded */}
+          {sounds.length > 0 && (
+            <SoundControls
+              sound={activeSound ?? sounds[0]}
+              onChange={updateActiveSound}
+              onRemap={remapAllSounds}
+            />
+          )}
+
+          {/* Effect bus controls — scrollable */}
+          {sounds.length > 0 && (
+            <div className="flex-1 overflow-y-auto sidebar-scroll min-h-0">
               <ReverbControls
                 grainMix={reverbMix}
                 grainSize={reverbSize}
                 grainDrive={reverbDrive}
+                grainOutputLevel={grainOutputLevel}
                 onGrainMixChange={setReverbMix}
                 onGrainSizeChange={setReverbSize}
                 onGrainDriveChange={setReverbDrive}
+                onGrainOutputLevelChange={setGrainOutputLevel}
                 diffusionMix={diffusionReverbMix}
                 diffusionSize={diffusionReverbSize}
                 diffusionDrive={diffusionReverbDrive}
+                diffusionOutputLevel={diffusionOutputLevel}
                 diffusionFeedback={diffusionFeedback}
                 diffusionDelayMs={diffusionDelayMs}
                 onDiffusionMixChange={setDiffusionReverbMix}
                 onDiffusionSizeChange={setDiffusionReverbSize}
                 onDiffusionDriveChange={setDiffusionReverbDrive}
+                onDiffusionOutputLevelChange={setDiffusionOutputLevel}
                 onDiffusionFeedbackChange={setDiffusionFeedback}
                 onDiffusionDelayMsChange={setDiffusionDelayMs}
                 spectralMix={spectralReverbMix}
                 spectralSize={spectralReverbSize}
                 spectralDrive={spectralReverbDrive}
+                spectralOutputLevel={spectralOutputLevel}
                 onSpectralMixChange={setSpectralReverbMix}
                 onSpectralSizeChange={setSpectralReverbSize}
                 onSpectralDriveChange={setSpectralReverbDrive}
+                onSpectralOutputLevelChange={setSpectralOutputLevel}
                 layerMix={layerReverbMix}
                 layerSize={layerReverbSize}
                 layerDrive={layerReverbDrive}
@@ -266,47 +310,51 @@ export function GranularLayout(props: GranularViewModel) {
                 onLayerDriveChange={setLayerReverbDrive}
                 crystalLevel={crystalLevel}
                 onCrystalLevelChange={setCrystalLevel}
-                stretchFactor={stretchFactor}
-                onStretchChange={setStretchFactor}
                 autoPlay={autoPlay}
                 onAutoPlayToggle={() => setAutoPlay((v) => !v)}
                 autoDensity={autoDensity}
                 onAutoDensityChange={setAutoDensity}
-                isPalimpsestRecording={isPalimpsestRecording}
-                onStartPalimpsest={startPalimpsestRecording}
-                onStopPalimpsest={stopPalimpsestRecording}
-                onClearPalimpsest={clearPalimpsest}
-                palimpsestLayerCount={palimpsestLayers.length}
               />
-            </>
-          ) : null}
+            </div>
+          )}
         </aside>
 
-        <main
-          className="glass-panel flex-1 relative overflow-hidden rounded-xl m-2 ml-1"
-          style={{ background: "rgba(255,255,255,0.16)" }}
-        >
-          <NodeCanvas
-            sounds={sounds}
-            activeSoundId={activeSoundId}
-            flash={flash}
-            traces={traces}
-            onTrigger={onNodeTrigger}
-            onDiffusionTrigger={playDiffusionGrain}
-            onWallBounce={onWallBounce}
-            crystals={crystals}
-            onCaptureCrystal={captureCrystal}
-            onRemoveCrystal={removeCrystal}
-            stretchFactor={stretchFactor}
+        <div className="flex flex-1 min-h-0 min-w-0 flex-col lg:flex-row lg:items-stretch gap-2 m-2 mb-2 mt-2 mr-2 ml-1">
+          <main
+            className="glass-panel flex-1 relative overflow-hidden rounded-xl min-h-[200px] lg:min-h-0"
+            style={{ background: "rgba(255,255,255,0.16)" }}
+          >
+            <NodeCanvas
+              sounds={sounds}
+              activeSoundId={activeSoundId}
+              flash={flash}
+              traces={traces}
+              onTrigger={onNodeTrigger}
+              onDiffusionTrigger={playDiffusionGrain}
+              onWallBounce={onWallBounce}
+              crystals={crystals}
+              onCaptureCrystal={captureCrystal}
+              onRemoveCrystal={removeCrystal}
+            />
+            {sounds.length === 0 ? (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <p style={{ fontSize: fs(12), color: theme.colors.ink4, letterSpacing: "0.05em" }}>
+                  load a sound to see its granular field
+                </p>
+              </div>
+            ) : null}
+          </main>
+          <StackingMemoryPanel
+            layers={palimpsestLayers}
+            isRecording={isPalimpsestRecording}
+            layerOutputLevel={layerOutputLevel}
+            onLayerOutputLevelChange={setLayerOutputLevel}
+            onStartRecording={startPalimpsestRecording}
+            onStopRecording={stopPalimpsestRecording}
+            onClear={clearPalimpsest}
+            disabled={sounds.length === 0}
           />
-          {sounds.length === 0 ? (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <p style={{ fontSize: fs(12), color: theme.colors.ink4, letterSpacing: "0.05em" }}>
-                load a sound to see its granular field
-              </p>
-            </div>
-          ) : null}
-        </main>
+        </div>
       </div>
     </div>
   );

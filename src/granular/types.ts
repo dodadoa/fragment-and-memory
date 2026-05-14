@@ -90,8 +90,8 @@ export type PalimpsestLayer = {
   hue: number;            // display colour (inherits from the active sound at capture time)
 };
 
-export const MAX_PALIMPSEST_LAYERS  = 8;
-export const PALIMPSEST_DECAY       = 0.72;  // per new-layer multiplier
+export const MAX_PALIMPSEST_LAYERS  = 10;
+export const PALIMPSEST_DECAY       = 0.68;  // per new-layer multiplier — faster ghosting as stack grows
 export const PALIMPSEST_DRIFT_STEP  = 0.07;  // pitch-drift increase per layer added
 export const PALIMPSEST_JITTER_STEP = 20;    // ms of extra timing jitter per layer added
 export const PALIMPSEST_MIN_DECAY   = 0.04;  // layers below this are removed (truly forgotten)

@@ -31,6 +31,9 @@ export function useGranularApp() {
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   // ── Bus A: manual / auto-play grains ────────────────────────────────
+  // master → dryGain ─┐
+  //                   ├→ grainBusOut → destination
+  // master → awReverb → reverbGain ─┘
   const masterGainRef   = useRef<GainNode | null>(null);
   const reverbGainRef   = useRef<GainNode | null>(null);
   const dryGainRef      = useRef<GainNode | null>(null);
@@ -38,8 +41,9 @@ export function useGranularApp() {
 
   // ── Bus B: diffusion agents — feedback delay loop + reverb ──────────
   // Routing: grains → diffusionMaster
-  //   → diffusionDry → destination
-  //   → diffusionAwReverb → diffusionReverbGain → destination
+  //   → diffusionDry ─┐
+  //                    ├→ diffusionBusOut → destination
+  //   → diffusionAwReverb → diffusionReverbGain ─┘
   //   → diffusionDelay → diffusionFeedback → diffusionMaster  (cycle!)
   const diffusionMasterRef    = useRef<GainNode | null>(null);
   const diffusionDryRef       = useRef<GainNode | null>(null);
@@ -54,20 +58,25 @@ export function useGranularApp() {
   const spectralReverbGainRef  = useRef<GainNode | null>(null);
   const spectralAwReverbRef    = useRef<AudioWorkletNode | null>(null);
 
-  // ── Bus D: palimpsest layer playback (independent stretch/reverb) ─────
+  // ── Bus D: palimpsest layer playback (independent reverb) ─────
   const layerMasterRef         = useRef<GainNode | null>(null);
   const layerDryRef            = useRef<GainNode | null>(null);
   const layerReverbGainRef     = useRef<GainNode | null>(null);
   const layerAwReverbRef       = useRef<AudioWorkletNode | null>(null);
 
+  /** Post–dry/wet sum: balances each bus against the others at the destination. */
+  const grainBusOutRef         = useRef<GainNode | null>(null);
+  const diffusionBusOutRef     = useRef<GainNode | null>(null);
+  const spectralBusOutRef      = useRef<GainNode | null>(null);
+  const layerBusOutRef         = useRef<GainNode | null>(null);
+
   const diffusionFeedbackBaseRef = useRef(0.32);
   const diffusionDelayMsRef      = useRef(120);
   const lastWallBounceRef        = useRef(0);
 
-  // ── Spectral crystals + layer stretch ────────────────────────────────
+  // ── Spectral crystals ─────────────────────────────────────────────────
   const crystalTimersRef         = useRef<Map<string, number>>(new Map());
   const playCrystalGrainFnRef    = useRef<((c: SpectralCrystal) => void) | null>(null);
-  const stretchFactorRef         = useRef(1.0); // only for layer-record playback
   const crystalLevelRef          = useRef(1.2);
 
   // ── Palimpsest layering ──────────────────────────────────────────────
@@ -81,7 +90,6 @@ export function useGranularApp() {
   const schedulePalimpsestRef      = useRef<((layer: PalimpsestLayer) => void) | null>(null);
 
   const [crystals, setCrystals]         = useState<SpectralCrystal[]>([]);
-  const [stretchFactor, setStretchFactor] = useState(1.0);
   const [crystalLevel, setCrystalLevel]   = useState(1.2);
   const crystalsRef = useRef<SpectralCrystal[]>([]);
   const soundsRef2  = useRef<Sound[]>([]); // alias kept in sync for crystal playback
@@ -138,7 +146,6 @@ export function useGranularApp() {
   }, []);
 
   useEffect(() => { crystalsRef.current = crystals; }, [crystals]);
-  useEffect(() => { stretchFactorRef.current = stretchFactor; }, [stretchFactor]);
   useEffect(() => { crystalLevelRef.current = crystalLevel; }, [crystalLevel]);
   useEffect(() => { palimpsestLayersRef.current = palimpsestLayers; }, [palimpsestLayers]);
   useEffect(() => { isPalimpsestRecordingRef.current = isPalimpsestRecording; }, [isPalimpsestRecording]);
@@ -217,10 +224,15 @@ export function useGranularApp() {
   const [spectralReverbSize,  setSpectralReverbSize]  = useState(0.7);
   const [spectralReverbDrive, setSpectralReverbDrive] = useState(0.42);
 
-  // ── Reverb + stretch state — Bus D (layer record playback) ────────────
+  // ── Reverb state — Bus D (stack-memory / palimpsest playback) ─────────
   const [layerReverbMix,   setLayerReverbMix]   = useState(0.48);
   const [layerReverbSize,  setLayerReverbSize]  = useState(0.58);
   const [layerReverbDrive, setLayerReverbDrive] = useState(0.35);
+
+  const [grainOutputLevel, setGrainOutputLevel] = useState(1);
+  const [diffusionOutputLevel, setDiffusionOutputLevel] = useState(1);
+  const [spectralOutputLevel, setSpectralOutputLevel] = useState(1);
+  const [layerOutputLevel, setLayerOutputLevel] = useState(1);
 
   useEffect(() => { diffusionFeedbackBaseRef.current = diffusionFeedback; }, [diffusionFeedback]);
   useEffect(() => { diffusionDelayMsRef.current = diffusionDelayMs; }, [diffusionDelayMs]);
@@ -241,11 +253,15 @@ export function useGranularApp() {
       const dryGain = ctx.createGain();
       dryGain.gain.value = 1;
       master.connect(dryGain);
-      dryGain.connect(ctx.destination);
 
       const reverbGain = ctx.createGain();
       reverbGain.gain.value = 0;
-      reverbGain.connect(ctx.destination);
+
+      const grainBusOut = ctx.createGain();
+      grainBusOut.gain.value = 1;
+      dryGain.connect(grainBusOut);
+      reverbGain.connect(grainBusOut);
+      grainBusOut.connect(ctx.destination);
 
       // ── Bus B: diffusion master + feedback loop ──────────────────────
       const diffMaster = ctx.createGain();
@@ -256,11 +272,15 @@ export function useGranularApp() {
       const initAngle = (0.65 * Math.PI) / 2;
       diffDry.gain.value = Math.cos(initAngle);
       diffMaster.connect(diffDry);
-      diffDry.connect(ctx.destination);
 
       const diffReverbGain = ctx.createGain();
       diffReverbGain.gain.value = Math.sin(initAngle);
-      diffReverbGain.connect(ctx.destination);
+
+      const diffusionBusOut = ctx.createGain();
+      diffusionBusOut.gain.value = 1;
+      diffDry.connect(diffusionBusOut);
+      diffReverbGain.connect(diffusionBusOut);
+      diffusionBusOut.connect(ctx.destination);
 
       // ── Bus C: spectral freeze master ─────────────────────────────────
       const spectralMaster = ctx.createGain();
@@ -269,10 +289,14 @@ export function useGranularApp() {
       const spectralDry = ctx.createGain();
       spectralDry.gain.value = Math.cos(spectralAngle);
       spectralMaster.connect(spectralDry);
-      spectralDry.connect(ctx.destination);
       const spectralReverbGain = ctx.createGain();
       spectralReverbGain.gain.value = Math.sin(spectralAngle);
-      spectralReverbGain.connect(ctx.destination);
+
+      const spectralBusOut = ctx.createGain();
+      spectralBusOut.gain.value = 1;
+      spectralDry.connect(spectralBusOut);
+      spectralReverbGain.connect(spectralBusOut);
+      spectralBusOut.connect(ctx.destination);
 
       // ── Bus D: layer record playback master ───────────────────────────
       const layerMaster = ctx.createGain();
@@ -281,10 +305,14 @@ export function useGranularApp() {
       const layerDry = ctx.createGain();
       layerDry.gain.value = Math.cos(layerAngle);
       layerMaster.connect(layerDry);
-      layerDry.connect(ctx.destination);
       const layerReverbGain = ctx.createGain();
       layerReverbGain.gain.value = Math.sin(layerAngle);
-      layerReverbGain.connect(ctx.destination);
+
+      const layerBusOut = ctx.createGain();
+      layerBusOut.gain.value = 1;
+      layerDry.connect(layerBusOut);
+      layerReverbGain.connect(layerBusOut);
+      layerBusOut.connect(ctx.destination);
 
       // Feedback delay cycle: diffMaster → delay → feedbackGain → diffMaster
       // Web Audio allows cycles that contain at least one DelayNode.
@@ -311,6 +339,10 @@ export function useGranularApp() {
       layerMasterRef.current        = layerMaster;
       layerDryRef.current           = layerDry;
       layerReverbGainRef.current    = layerReverbGain;
+      grainBusOutRef.current        = grainBusOut;
+      diffusionBusOutRef.current    = diffusionBusOut;
+      spectralBusOutRef.current     = spectralBusOut;
+      layerBusOutRef.current        = layerBusOut;
 
       // Load AudioWorklet — creates two independent reverb instances
       void ctx.audioWorklet
@@ -396,6 +428,22 @@ export function useGranularApp() {
     if (layerDryRef.current)        layerDryRef.current.gain.value        = Math.cos(a);
     if (layerReverbGainRef.current) layerReverbGainRef.current.gain.value = Math.sin(a);
   }, [layerReverbMix]);
+
+  useEffect(() => {
+    if (grainBusOutRef.current) grainBusOutRef.current.gain.value = grainOutputLevel;
+  }, [grainOutputLevel]);
+
+  useEffect(() => {
+    if (diffusionBusOutRef.current) diffusionBusOutRef.current.gain.value = diffusionOutputLevel;
+  }, [diffusionOutputLevel]);
+
+  useEffect(() => {
+    if (spectralBusOutRef.current) spectralBusOutRef.current.gain.value = spectralOutputLevel;
+  }, [spectralOutputLevel]);
+
+  useEffect(() => {
+    if (layerBusOutRef.current) layerBusOutRef.current.gain.value = layerOutputLevel;
+  }, [layerOutputLevel]);
 
   useEffect(() => {
     const ctx = audioCtxRef.current; if (!ctx) return;
@@ -751,11 +799,8 @@ export function useGranularApp() {
     const layerSpan  = duration / sound.layers;
     const layerStart = node.layerIndex * layerSpan;
     const layerEnd   = layerStart + layerSpan;
-    const sf         = stretchFactorRef.current; // stretch applies only here
     const baseGrainSec = Math.min(sound.grainMs / 1000, duration);
-    const grainSec   = sf < 0.99
-      ? Math.min(baseGrainSec * (1.2 + (1 - sf) * 3.1), 4.2)
-      : baseGrainSec;
+    const grainSec     = baseGrainSec;
     const hardMax    = Math.max(0, duration - grainSec);
     const winEnd     = Math.min(layerEnd, hardMax);
     const offset     = winEnd > layerStart
@@ -765,10 +810,17 @@ export function useGranularApp() {
     const source = ctx.createBufferSource();
     source.buffer = sound.buffer;
     // Older layers drift in pitch — the accumulated jitter makes them wander
-    const totalJitter = sound.pitchJitter + pitchDrift + (1 - sf) * 0.35;
+    const totalJitter = sound.pitchJitter + pitchDrift;
     const jitter = 1 + (Math.random() * 2 - 1) * totalJitter * 0.5;
-    const stretchPitch = sf < 0.99 ? Math.pow(sf, 0.58) : 1;
-    source.playbackRate.value = Math.max(0.05, node.rateJitter * stretchPitch * jitter);
+    source.playbackRate.value = Math.max(0.05, node.rateJitter * jitter);
+
+    const d = Math.max(0.04, decayLevel);
+    // Deeper in the stack → quieter + darker (low-pass), like sinking into reverb wash
+    const dullMix = 0.18 + 0.82 * Math.pow(d, 0.85);
+    const tone = ctx.createBiquadFilter();
+    tone.type = "lowpass";
+    tone.frequency.value = 380 + 11800 * dullMix;
+    tone.Q.value = 0.62;
 
     const gain   = ctx.createGain();
     const panner = ctx.createStereoPanner();
@@ -777,7 +829,8 @@ export function useGranularApp() {
     const now      = ctx.currentTime;
     const attack   = Math.min(0.025, Math.max(0.004, grainSec * 0.12));
     const release  = Math.min(0.22,  Math.max(0.025, grainSec * 0.28));
-    const peak     = sound.gain * decayLevel * 0.8 * Math.min(1, sf + 0.45);
+    const levelMul = (0.32 + 0.68 * Math.pow(d, 1.05));
+    const peak     = sound.gain * decayLevel * 0.8 * levelMul;
     const sustEnd  = Math.max(attack, grainSec - release);
 
     gain.gain.setValueAtTime(0, now);
@@ -785,12 +838,18 @@ export function useGranularApp() {
     gain.gain.setValueAtTime(peak, now + sustEnd);
     gain.gain.linearRampToValueAtTime(0, now + grainSec);
 
-    source.connect(gain);
+    source.connect(tone);
+    tone.connect(gain);
     gain.connect(panner);
     panner.connect(layerBus);
     source.start(now, offset, grainSec + 0.02);
     source.stop(now + grainSec + 0.05);
-    source.onended = () => { source.disconnect(); gain.disconnect(); panner.disconnect(); };
+    source.onended = () => {
+      source.disconnect();
+      tone.disconnect();
+      gain.disconnect();
+      panner.disconnect();
+    };
   }, [ensureContext]);
 
   useEffect(() => { playPalimpsestGrainRef.current = playPalimpsestGrain; }, [playPalimpsestGrain]);
@@ -991,18 +1050,24 @@ export function useGranularApp() {
     if (e.dataTransfer.files?.length) void handleFiles(e.dataTransfer.files);
   };
 
-  const updateAllSounds = useCallback((patch: Partial<Sound>) => {
-    setSounds((prev) =>
-      prev.map((s) => {
-        const merged = { ...s, ...patch } as Sound;
-        const layersChanged = patch.layers !== undefined && patch.layers !== s.layers;
-        const spreadChanged = patch.spread !== undefined && patch.spread !== s.spread;
-        if (layersChanged || spreadChanged) merged.nodes = buildNodes(s.id, merged.layers, merged.spread);
-        if (layersChanged) merged.layerPitches = analyzeLayerPitches(s.buffer, merged.layers);
-        return merged;
-      }),
-    );
-  }, []);
+  const updateActiveSound = useCallback(
+    (patch: Partial<Sound>) => {
+      setSounds((prev) => {
+        const targetId = activeSoundId ?? prev[0]?.id;
+        if (targetId === undefined) return prev;
+        return prev.map((s) => {
+          if (s.id !== targetId) return s;
+          const merged = { ...s, ...patch } as Sound;
+          const layersChanged = patch.layers !== undefined && patch.layers !== s.layers;
+          const spreadChanged = patch.spread !== undefined && patch.spread !== s.spread;
+          if (layersChanged || spreadChanged) merged.nodes = buildNodes(s.id, merged.layers, merged.spread);
+          if (layersChanged) merged.layerPitches = analyzeLayerPitches(s.buffer, merged.layers);
+          return merged;
+        });
+      });
+    },
+    [activeSoundId],
+  );
 
   const remapAllSounds = useCallback(() => {
     setSounds((prev) =>
@@ -1089,23 +1154,27 @@ export function useGranularApp() {
     reverbMix,   setReverbMix,
     reverbSize,  setReverbSize,
     reverbDrive, setReverbDrive,
+    grainOutputLevel, setGrainOutputLevel,
     // Bus B diffusion
     diffusionReverbMix,   setDiffusionReverbMix,
     diffusionReverbSize,  setDiffusionReverbSize,
     diffusionReverbDrive, setDiffusionReverbDrive,
+    diffusionOutputLevel, setDiffusionOutputLevel,
     diffusionFeedback,    setDiffusionFeedback,
     diffusionDelayMs,     setDiffusionDelayMs,
     // Bus C spectral
     spectralReverbMix,    setSpectralReverbMix,
     spectralReverbSize,   setSpectralReverbSize,
     spectralReverbDrive,  setSpectralReverbDrive,
+    spectralOutputLevel,  setSpectralOutputLevel,
     // Bus D layer record
     layerReverbMix,       setLayerReverbMix,
     layerReverbSize,      setLayerReverbSize,
     layerReverbDrive,     setLayerReverbDrive,
+    layerOutputLevel,     setLayerOutputLevel,
     // Handlers
     onFileInput, onDrop,
-    updateAllSounds, remapAllSounds, removeSound,
+    updateActiveSound, remapAllSounds, removeSound,
     flash, traces,
     onNodeTrigger,
     playDiffusionGrain,
@@ -1113,8 +1182,6 @@ export function useGranularApp() {
     // Spectral crystals
     crystals, captureCrystal, removeCrystal,
     crystalLevel, setCrystalLevel,
-    // Time stretch
-    stretchFactor, setStretchFactor,
     // Palimpsest layering
     palimpsestLayers, isPalimpsestRecording,
     startPalimpsestRecording, stopPalimpsestRecording, clearPalimpsest,

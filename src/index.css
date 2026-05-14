@@ -102,3 +102,17 @@ html, body {
   0%, 100% { box-shadow: var(--node-glow-near); }
   50%       { box-shadow: var(--node-glow-far); }
 }
+
+/* ── Stacking memory panel ──────────────────────────────────────────────── */
+@keyframes stacking-tape-scan {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(240%); }
+}
+.stacking-tape-scan {
+  animation: stacking-tape-scan 3s linear infinite;
+}
+
+@keyframes stacking-pin-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}

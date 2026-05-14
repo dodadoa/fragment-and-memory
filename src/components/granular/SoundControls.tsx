@@ -15,10 +15,14 @@ export function SoundControls({
   const theme = useTheme();
   const fs = (px: number) => `calc(${px}px * var(--app-font-scale, 1))`;
   return (
-    <div className="glass-panel px-3 py-2 shrink-0 mx-2 mb-2 rounded-lg" style={{ borderTop: "1px solid var(--border)" }}>
-      <div className="flex items-center justify-between mb-2">
-        <h2 style={{ fontSize: fs(10), fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: theme.colors.ink2 }}>
-          all sounds
+    <div className="px-3 py-2 shrink-0 border-b" style={{ borderColor: "var(--border)" }}>
+      <div className="flex items-center justify-between gap-2 mb-2 min-w-0">
+        <h2
+          className="truncate min-w-0 pr-2"
+          style={{ fontSize: fs(10), fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: theme.colors.ink2 }}
+          title={sound.name}
+        >
+          {sound.name}
         </h2>
         <button
           type="button"

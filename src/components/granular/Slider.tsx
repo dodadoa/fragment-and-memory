@@ -47,6 +47,7 @@ export function Slider({
   onChange,
   format,
   hue,
+  title,
 }: {
   label: string;
   min: number;
@@ -56,6 +57,7 @@ export function Slider({
   onChange: (v: number) => void;
   format: (v: number) => string;
   hue: number;
+  title?: string;
 }) {
   const fs = (px: number) => `calc(${px}px * var(--app-font-scale, 1))`;
   const t       = Math.max(0, Math.min(1, (value - min) / (max - min)));
@@ -110,6 +112,7 @@ export function Slider({
       ref={wrapRef}
       className="flex flex-col items-center gap-[1px] select-none cursor-ns-resize"
       onMouseDown={handleMouseDown}
+      title={title}
     >
       <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
         {/* Track — warm light gray groove */}

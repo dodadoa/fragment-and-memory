@@ -30,7 +30,6 @@ export function NodeCanvas({
   crystals,
   onCaptureCrystal,
   onRemoveCrystal,
-  stretchFactor,
 }: {
   sounds: Sound[];
   activeSoundId: string | null;
@@ -42,7 +41,6 @@ export function NodeCanvas({
   crystals: SpectralCrystal[];
   onCaptureCrystal: (sound: Sound, node: LayerNode, cx: number, cy: number) => void;
   onRemoveCrystal: (id: string) => void;
-  stretchFactor: number;
 }) {
   const fs = (px: number) => `calc(${px}px * var(--app-font-scale, 1))`;
   const maxLayers = useMemo(
@@ -474,16 +472,6 @@ export function NodeCanvas({
       >
         arrow keys: move / Q+E: scope / F: freeze
       </div>
-
-      {/* Time-stretch HUD */}
-      {stretchFactor < 0.98 && (
-        <div
-          className="absolute top-3 right-4 pointer-events-none z-40 tabular-nums"
-          style={{ fontSize: fs(11), color: "rgba(90,70,130,0.65)", letterSpacing: "0.05em" }}
-        >
-          ×{Math.round(1 / stretchFactor)} stretch
-        </div>
-      )}
 
       {/* ── Spectral crystals ──────────────────────────────────────────── */}
       {crystals.map((crystal) => {
