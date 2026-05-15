@@ -1,8 +1,10 @@
 import type { GranularViewModel } from "@/hooks/useGranularApp";
+import { MAX_GRAIN_MS, MIN_GRAIN_MS } from "@/granular/types";
 import { useTheme } from "@/theme/ThemeProvider";
 import { Loader } from "./Loader";
 import { NodeCanvas } from "./NodeCanvas";
 import { ReverbControls } from "./ReverbControls";
+import { Slider } from "./Slider";
 import { SoundControls } from "./SoundControls";
 import { StackingMemoryPanel } from "./StackingMemoryPanel";
 
@@ -69,6 +71,7 @@ export function GranularLayout(props: GranularViewModel) {
     setLayerOutputLevel,
     onFileInput,
     onDrop,
+    updateAllSounds,
     updateActiveSound,
     remapAllSounds,
     removeSound,
@@ -118,10 +121,10 @@ export function GranularLayout(props: GranularViewModel) {
             className="leading-none"
             style={{ fontSize: fs(16), fontWeight: 700, letterSpacing: "0.08em", color: theme.colors.ink1 }}
           >
-            LAYER WORD
+            FRAGMENT & MEMORY
           </h1>
           <p style={{ fontSize: fs(10), color: theme.colors.ink3, marginTop: 4, letterSpacing: "0.04em" }}>
-            granular diffusion / walk the agent
+            granular synthesis · stacking memory
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
@@ -131,7 +134,7 @@ export function GranularLayout(props: GranularViewModel) {
               onClick={startRecording}
               disabled={sounds.length === 0}
               className="rounded-full px-3 py-1 disabled:opacity-30 transition-opacity"
-              style={{ fontSize: fs(11), letterSpacing: "0.04em", border: `1px solid ${theme.colors.accent}66`, color: "#cc4a18", background: `${theme.colors.accent}14` }}
+              style={{ fontSize: fs(11), letterSpacing: "0.04em", border: `1px solid ${theme.colors.borderMid}`, color: theme.colors.ink1, background: "transparent" }}
             >
               ⏺ record
             </button>
@@ -141,7 +144,7 @@ export function GranularLayout(props: GranularViewModel) {
               type="button"
               onClick={stopRecording}
               className="rounded-full px-3 py-1 animate-pulse"
-              style={{ fontSize: fs(11), border: `1px solid ${theme.colors.accent}aa`, color: "#b83e10", background: `${theme.colors.accent}24` }}
+              style={{ fontSize: fs(11), border: `1px solid ${theme.colors.ink1}`, color: theme.colors.ink1, background: "rgba(0,0,0,0.06)" }}
             >
               ⏹ stop · recording
             </button>
@@ -174,22 +177,21 @@ export function GranularLayout(props: GranularViewModel) {
           <Loader isLoading={isLoading} error={loadError} onFileInput={onFileInput} onDrop={onDrop} />
 
           {/* Master volume */}
-          <div
-            className="px-3 py-2 shrink-0 flex items-center gap-3 border-b"
-            style={{ borderColor: theme.colors.border }}
-          >
-            <span className="shrink-0" style={{ fontSize: fs(10), color: theme.colors.ink3, letterSpacing: "0.06em" }}>
-              master
-            </span>
-            <input
-              type="range"
-              min={0} max={1} step={0.01}
-              value={masterVolume}
-              onChange={(e) => setMasterVolume(parseFloat(e.target.value))}
-              className="flex-1 min-w-0"
-              style={{ accentColor: "var(--accent)" }}
-              aria-label="Master volume"
-            />
+          <div className="shrink-0" style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+            <div className="px-3 py-1" style={{ background: "rgba(0,0,0,0.06)" }}>
+              <span style={{ fontSize: fs(9), fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: theme.colors.ink3 }}>master</span>
+            </div>
+            <div className="px-3 py-2 flex items-center gap-3">
+              <input
+                type="range"
+                min={0} max={1} step={0.01}
+                value={masterVolume}
+                onChange={(e) => setMasterVolume(parseFloat(e.target.value))}
+                className="flex-1 min-w-0"
+                style={{ accentColor: "var(--accent)" }}
+                aria-label="Master volume"
+              />
+            </div>
           </div>
 
           {/* Sounds collapsible — just for switching; controls always show below */}
@@ -214,60 +216,121 @@ export function GranularLayout(props: GranularViewModel) {
                 </div>
               </button>
               {soundsExpanded && (
-                <ul style={{ borderTop: `1px solid ${theme.colors.border}` }}>
-                  {sounds.map((sound) => (
-                    <li
-                      key={sound.id}
-                      className="cursor-pointer transition-colors"
-                      style={{
-                        padding: "5px 10px",
-                        borderBottom: `1px solid ${theme.colors.border}`,
-                        background: activeSoundId === sound.id
-                          ? "rgba(34,51,59,0.06)"
-                          : "rgba(255,255,255,0.12)",
-                      }}
-                      onClick={() => setActiveSoundId(sound.id)}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span
-                            className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
-                            style={{
-                              background: sound.color,
-                              boxShadow: `0 0 8px ${sound.color}88, 0 0 20px ${sound.color}44`,
-                            }}
-                          />
-                          <span className="truncate" style={{ fontSize: fs(11), fontWeight: 700, color: theme.colors.ink1 }}>
-                            {sound.name}
-                          </span>
+                <>
+                  <ul style={{ borderTop: `1px solid ${theme.colors.border}` }}>
+                    {sounds.map((sound) => (
+                      <li
+                        key={sound.id}
+                        className="cursor-pointer transition-colors"
+                        style={{
+                          padding: "5px 10px",
+                          borderBottom: `1px solid ${theme.colors.border}`,
+                          background: activeSoundId === sound.id
+                            ? "rgba(0,0,0,0.07)"
+                            : "#ffffff",
+                        }}
+                        onClick={() => setActiveSoundId(sound.id)}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+                              style={{
+                                background: sound.color,
+                                boxShadow: `0 0 8px ${sound.color}88, 0 0 20px ${sound.color}44`,
+                              }}
+                            />
+                            <span className="truncate" style={{ fontSize: fs(11), fontWeight: 700, color: theme.colors.ink1 }}>
+                              {sound.name}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); removeSound(sound.id); }}
+                            className="transition-opacity hover:opacity-60 shrink-0"
+                            style={{ fontSize: fs(10), color: theme.colors.ink3 }}
+                            aria-label={`Remove ${sound.name}`}
+                          >
+                            ✕
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); removeSound(sound.id); }}
-                          className="transition-opacity hover:opacity-60 shrink-0"
-                          style={{ fontSize: fs(10), color: theme.colors.ink3 }}
-                          aria-label={`Remove ${sound.name}`}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                      <p className="mt-0.5 tabular-nums" style={{ fontSize: fs(9), color: theme.colors.ink3 }}>
-                        {sound.buffer.duration.toFixed(2)}s · {sound.layers} layers · {sound.nodes.length} nodes
-                      </p>
-                    </li>
-                  ))}
-                </ul>
+                        <p className="mt-0.5 tabular-nums" style={{ fontSize: fs(9), color: theme.colors.ink3 }}>
+                          {sound.buffer.duration.toFixed(2)}s · {sound.layers} layers · {sound.nodes.length} nodes
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                  {/* Per-sound controls — shown when collapsible is open */}
+                  <SoundControls
+                    sound={activeSound ?? sounds[0]}
+                    onChange={updateActiveSound}
+                    onRemap={remapAllSounds}
+                  />
+                </>
               )}
             </div>
           )}
 
-          {/* Per-sound grain controls — always visible when a sound is loaded */}
+          {/* Master layout — Layers + Spread apply to all sounds */}
           {sounds.length > 0 && (
-            <SoundControls
-              sound={activeSound ?? sounds[0]}
-              onChange={updateActiveSound}
-              onRemap={remapAllSounds}
-            />
+            <div className="shrink-0" style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+              <div className="px-3 py-1" style={{ background: "rgba(0,0,0,0.06)" }}>
+                <span style={{ fontSize: fs(9), fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: theme.colors.ink3 }}>layout</span>
+              </div>
+              <div className="px-3 py-2">
+              <div className="grid grid-cols-2 gap-x-2">
+                <Slider
+                  label="Layers"
+                  min={1} max={24} step={1}
+                  value={(activeSound ?? sounds[0]).layers}
+                  onChange={(v) => updateAllSounds({ layers: v })}
+                  format={(v) => `${v}`}
+                  hue={260}
+                  title="Layer count — applied to all sounds"
+                />
+                <Slider
+                  label="Spread"
+                  min={0.05} max={0.5} step={0.01}
+                  value={(activeSound ?? sounds[0]).spread}
+                  onChange={(v) => updateAllSounds({ spread: v })}
+                  format={(v) => v.toFixed(2)}
+                  hue={260}
+                  title="Node spread — applied to all sounds"
+                />
+              </div>
+              </div>
+            </div>
+          )}
+
+          {/* Master grain — Size + Gain apply to all sounds */}
+          {sounds.length > 0 && (
+            <div className="shrink-0" style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+              <div className="px-3 py-1" style={{ background: "rgba(0,0,0,0.06)" }}>
+                <span style={{ fontSize: fs(9), fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: theme.colors.ink3 }}>grain</span>
+              </div>
+              <div className="px-3 py-2">
+              <div className="grid grid-cols-2 gap-x-2">
+                <Slider
+                  label="Size"
+                  min={MIN_GRAIN_MS} max={MAX_GRAIN_MS} step={5}
+                  value={(activeSound ?? sounds[0]).grainMs}
+                  onChange={(v) => updateAllSounds({ grainMs: v })}
+                  format={(v) => `${v.toFixed(0)}ms`}
+                  hue={260}
+                  title="Grain size — applied to all sounds"
+                />
+                <Slider
+                  label="Gain"
+                  min={0} max={4} step={0.01}
+                  value={(activeSound ?? sounds[0]).gain}
+                  onChange={(v) => updateAllSounds({ gain: v })}
+                  format={(v) => v.toFixed(2)}
+                  hue={260}
+                  title="Grain gain — applied to all sounds"
+                />
+              </div>
+              </div>
+            </div>
           )}
 
           {/* Effect bus controls — scrollable */}
@@ -302,12 +365,6 @@ export function GranularLayout(props: GranularViewModel) {
                 onSpectralSizeChange={setSpectralReverbSize}
                 onSpectralDriveChange={setSpectralReverbDrive}
                 onSpectralOutputLevelChange={setSpectralOutputLevel}
-                layerMix={layerReverbMix}
-                layerSize={layerReverbSize}
-                layerDrive={layerReverbDrive}
-                onLayerMixChange={setLayerReverbMix}
-                onLayerSizeChange={setLayerReverbSize}
-                onLayerDriveChange={setLayerReverbDrive}
                 crystalLevel={crystalLevel}
                 onCrystalLevelChange={setCrystalLevel}
                 autoPlay={autoPlay}
@@ -319,10 +376,10 @@ export function GranularLayout(props: GranularViewModel) {
           )}
         </aside>
 
-        <div className="flex flex-1 min-h-0 min-w-0 flex-col lg:flex-row lg:items-stretch gap-2 m-2 mb-2 mt-2 mr-2 ml-1">
+        <div className="flex flex-1 min-h-0 min-w-0 flex-col lg:flex-row lg:items-start gap-2 m-2 mb-2 mt-2 mr-2 ml-1">
           <main
-            className="glass-panel flex-1 relative overflow-hidden rounded-xl min-h-[200px] lg:min-h-0"
-            style={{ background: "rgba(255,255,255,0.16)" }}
+            className="glass-panel flex-1 relative overflow-hidden rounded-xl min-h-[200px] lg:min-h-0 lg:self-stretch"
+            style={{ background: "#e8f0f8" }}
           >
             <NodeCanvas
               sounds={sounds}
@@ -349,6 +406,12 @@ export function GranularLayout(props: GranularViewModel) {
             isRecording={isPalimpsestRecording}
             layerOutputLevel={layerOutputLevel}
             onLayerOutputLevelChange={setLayerOutputLevel}
+            layerMix={layerReverbMix}
+            layerSize={layerReverbSize}
+            layerDrive={layerReverbDrive}
+            onLayerMixChange={setLayerReverbMix}
+            onLayerSizeChange={setLayerReverbSize}
+            onLayerDriveChange={setLayerReverbDrive}
             onStartRecording={startPalimpsestRecording}
             onStopRecording={stopPalimpsestRecording}
             onClear={clearPalimpsest}

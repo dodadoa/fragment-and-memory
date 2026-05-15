@@ -70,8 +70,8 @@ export function useGranularApp() {
   const spectralBusOutRef      = useRef<GainNode | null>(null);
   const layerBusOutRef         = useRef<GainNode | null>(null);
 
-  const diffusionFeedbackBaseRef = useRef(0.32);
-  const diffusionDelayMsRef      = useRef(120);
+  const diffusionFeedbackBaseRef = useRef(0);
+  const diffusionDelayMsRef      = useRef(0);
   const lastWallBounceRef        = useRef(0);
 
   // ── Spectral crystals ─────────────────────────────────────────────────
@@ -209,25 +209,25 @@ export function useGranularApp() {
 
   // ── Reverb state — Bus A (grains) ─────────────────────────────────────
   const [reverbMix,   setReverbMix]   = useState(0);
-  const [reverbSize,  setReverbSize]  = useState(0.5);
-  const [reverbDrive, setReverbDrive] = useState(0.3);
+  const [reverbSize,  setReverbSize]  = useState(0);
+  const [reverbDrive, setReverbDrive] = useState(0);
 
   // ── Reverb + feedback state — Bus B (diffusion agents) ───────────────
-  const [diffusionReverbMix,   setDiffusionReverbMix]   = useState(0.65);
-  const [diffusionReverbSize,  setDiffusionReverbSize]  = useState(0.72);
-  const [diffusionReverbDrive, setDiffusionReverbDrive] = useState(0.45);
-  const [diffusionFeedback,    setDiffusionFeedback]    = useState(0.32);
-  const [diffusionDelayMs,     setDiffusionDelayMs]     = useState(120);
+  const [diffusionReverbMix,   setDiffusionReverbMix]   = useState(0);
+  const [diffusionReverbSize,  setDiffusionReverbSize]  = useState(0);
+  const [diffusionReverbDrive, setDiffusionReverbDrive] = useState(0);
+  const [diffusionFeedback,    setDiffusionFeedback]    = useState(0);
+  const [diffusionDelayMs,     setDiffusionDelayMs]     = useState(0);
 
   // ── Reverb state — Bus C (spectral freeze) ────────────────────────────
-  const [spectralReverbMix,   setSpectralReverbMix]   = useState(0.62);
-  const [spectralReverbSize,  setSpectralReverbSize]  = useState(0.7);
-  const [spectralReverbDrive, setSpectralReverbDrive] = useState(0.42);
+  const [spectralReverbMix,   setSpectralReverbMix]   = useState(0);
+  const [spectralReverbSize,  setSpectralReverbSize]  = useState(0);
+  const [spectralReverbDrive, setSpectralReverbDrive] = useState(0);
 
   // ── Reverb state — Bus D (stack-memory / palimpsest playback) ─────────
-  const [layerReverbMix,   setLayerReverbMix]   = useState(0.48);
-  const [layerReverbSize,  setLayerReverbSize]  = useState(0.58);
-  const [layerReverbDrive, setLayerReverbDrive] = useState(0.35);
+  const [layerReverbMix,   setLayerReverbMix]   = useState(0);
+  const [layerReverbSize,  setLayerReverbSize]  = useState(0);
+  const [layerReverbDrive, setLayerReverbDrive] = useState(0);
 
   const [grainOutputLevel, setGrainOutputLevel] = useState(1);
   const [diffusionOutputLevel, setDiffusionOutputLevel] = useState(1);
@@ -1050,6 +1050,19 @@ export function useGranularApp() {
     if (e.dataTransfer.files?.length) void handleFiles(e.dataTransfer.files);
   };
 
+  const updateAllSounds = useCallback((patch: Partial<Sound>) => {
+    setSounds((prev) =>
+      prev.map((s) => {
+        const merged = { ...s, ...patch } as Sound;
+        const layersChanged = patch.layers !== undefined && patch.layers !== s.layers;
+        const spreadChanged = patch.spread !== undefined && patch.spread !== s.spread;
+        if (layersChanged || spreadChanged) merged.nodes = buildNodes(s.id, merged.layers, merged.spread);
+        if (layersChanged) merged.layerPitches = analyzeLayerPitches(s.buffer, merged.layers);
+        return merged;
+      }),
+    );
+  }, []);
+
   const updateActiveSound = useCallback(
     (patch: Partial<Sound>) => {
       setSounds((prev) => {
@@ -1174,7 +1187,7 @@ export function useGranularApp() {
     layerOutputLevel,     setLayerOutputLevel,
     // Handlers
     onFileInput, onDrop,
-    updateActiveSound, remapAllSounds, removeSound,
+    updateAllSounds, updateActiveSound, remapAllSounds, removeSound,
     flash, traces,
     onNodeTrigger,
     playDiffusionGrain,
