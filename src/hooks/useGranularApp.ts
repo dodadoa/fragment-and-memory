@@ -25,6 +25,7 @@ import {
   spawnNode,
   uid,
 } from "@/granular/domain";
+import { downloadBlob, extensionForMime, pickRecorderMimeType } from "@/granular/audioExport";
 
 export function useGranularApp() {
 
@@ -69,6 +70,12 @@ export function useGranularApp() {
   const diffusionBusOutRef     = useRef<GainNode | null>(null);
   const spectralBusOutRef      = useRef<GainNode | null>(null);
   const layerBusOutRef         = useRef<GainNode | null>(null);
+  const masterOutRef           = useRef<GainNode | null>(null);
+
+  const captureStreamDestRef   = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const mediaRecorderRef       = useRef<MediaRecorder | null>(null);
+  const mediaChunksRef         = useRef<Blob[]>([]);
+  const captureMimeRef         = useRef(pickRecorderMimeType());
 
   const diffusionFeedbackBaseRef = useRef(0);
   const diffusionDelayMsRef      = useRef(0);
@@ -169,6 +176,8 @@ export function useGranularApp() {
   const recordStartRef = useRef<number | null>(null);
   const loopSoundsRef = useRef<Sound[]>([]);
   const playGrainRef = useRef<((s: Sound, n: LayerNode) => void) | null>(null);
+  const [sessionRecordingBlob, setSessionRecordingBlob] = useState<Blob | null>(null);
+  const [isExportingAudio, setIsExportingAudio] = useState(false);
 
   const recordEvent = useCallback((soundId: string, nodeId: string) => {
     if (isRecording && recordStartRef.current !== null) {
@@ -186,6 +195,7 @@ export function useGranularApp() {
   }, [isRecording]);
 
   const startRecording = useCallback(() => {
+    setSessionRecordingBlob(null);
     setLoopEvents([]);
     setIsLooping(false);
     setIsRecording(true);
@@ -205,6 +215,7 @@ export function useGranularApp() {
     setIsRecording(false);
     setLoopEvents([]);
     setLoopIteration(0);
+    setSessionRecordingBlob(null);
   }, []);
 
   // ── Reverb state — Bus A (grains) ─────────────────────────────────────
@@ -246,6 +257,10 @@ export function useGranularApp() {
           .webkitAudioContext;
       const ctx = new Ctx();
 
+      const masterOut = ctx.createGain();
+      masterOut.gain.value = 1;
+      masterOut.connect(ctx.destination);
+
       // ── Bus A: grain master ──────────────────────────────────────────
       const master = ctx.createGain();
       master.gain.value = masterVolume;
@@ -261,7 +276,7 @@ export function useGranularApp() {
       grainBusOut.gain.value = 1;
       dryGain.connect(grainBusOut);
       reverbGain.connect(grainBusOut);
-      grainBusOut.connect(ctx.destination);
+      grainBusOut.connect(masterOut);
 
       // ── Bus B: diffusion master + feedback loop ──────────────────────
       const diffMaster = ctx.createGain();
@@ -280,7 +295,7 @@ export function useGranularApp() {
       diffusionBusOut.gain.value = 1;
       diffDry.connect(diffusionBusOut);
       diffReverbGain.connect(diffusionBusOut);
-      diffusionBusOut.connect(ctx.destination);
+      diffusionBusOut.connect(masterOut);
 
       // ── Bus C: spectral freeze master ─────────────────────────────────
       const spectralMaster = ctx.createGain();
@@ -296,7 +311,7 @@ export function useGranularApp() {
       spectralBusOut.gain.value = 1;
       spectralDry.connect(spectralBusOut);
       spectralReverbGain.connect(spectralBusOut);
-      spectralBusOut.connect(ctx.destination);
+      spectralBusOut.connect(masterOut);
 
       // ── Bus D: layer record playback master ───────────────────────────
       const layerMaster = ctx.createGain();
@@ -312,7 +327,7 @@ export function useGranularApp() {
       layerBusOut.gain.value = 1;
       layerDry.connect(layerBusOut);
       layerReverbGain.connect(layerBusOut);
-      layerBusOut.connect(ctx.destination);
+      layerBusOut.connect(masterOut);
 
       // Feedback delay cycle: diffMaster → delay → feedbackGain → diffMaster
       // Web Audio allows cycles that contain at least one DelayNode.
@@ -343,6 +358,7 @@ export function useGranularApp() {
       diffusionBusOutRef.current    = diffusionBusOut;
       spectralBusOutRef.current     = spectralBusOut;
       layerBusOutRef.current        = layerBusOut;
+      masterOutRef.current          = masterOut;
 
       // Load AudioWorklet — creates two independent reverb instances
       void ctx.audioWorklet
@@ -396,6 +412,92 @@ export function useGranularApp() {
     return audioCtxRef.current;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [masterVolume]);
+
+  const startMasterCapture = useCallback(() => {
+    const ctx = audioCtxRef.current;
+    if (!ctx || !masterOutRef.current || mediaRecorderRef.current) return;
+
+    const dest = ctx.createMediaStreamDestination();
+    captureStreamDestRef.current = dest;
+    masterOutRef.current.connect(dest);
+
+    const mimeType = pickRecorderMimeType();
+    captureMimeRef.current = mimeType;
+    mediaChunksRef.current = [];
+
+    const recorder = new MediaRecorder(dest.stream, { mimeType });
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) mediaChunksRef.current.push(event.data);
+    };
+    recorder.start(200);
+    mediaRecorderRef.current = recorder;
+  }, []);
+
+  const finishMasterCapture = useCallback((): Promise<Blob | null> => {
+    return new Promise((resolve) => {
+      const recorder = mediaRecorderRef.current;
+      const dest = captureStreamDestRef.current;
+      if (!recorder || recorder.state === "inactive") {
+        resolve(null);
+        return;
+      }
+
+      recorder.onstop = () => {
+        const blob = new Blob(mediaChunksRef.current, { type: captureMimeRef.current });
+        if (masterOutRef.current && dest) {
+          try { masterOutRef.current.disconnect(dest); } catch { /* already disconnected */ }
+        }
+        captureStreamDestRef.current = null;
+        mediaRecorderRef.current = null;
+        mediaChunksRef.current = [];
+        resolve(blob.size > 0 ? blob : null);
+      };
+      recorder.stop();
+    });
+  }, []);
+
+  useEffect(() => {
+    if (isRecording) {
+      ensureContext();
+      startMasterCapture();
+      return;
+    }
+    if (!mediaRecorderRef.current) return;
+    void finishMasterCapture().then((blob) => {
+      if (blob) setSessionRecordingBlob(blob);
+    });
+  }, [isRecording, ensureContext, startMasterCapture, finishMasterCapture]);
+
+  const saveSessionRecording = useCallback(() => {
+    if (!sessionRecordingBlob) return;
+    downloadBlob(
+      sessionRecordingBlob,
+      `fragment-memory-session-${Date.now()}.${extensionForMime(sessionRecordingBlob.type)}`,
+    );
+  }, [sessionRecordingBlob]);
+
+  const saveStackMemoryToFile = useCallback(async () => {
+    const layers = palimpsestLayersRef.current;
+    if (layers.length === 0 || isExportingAudio) return;
+
+    ensureContext();
+    setIsExportingAudio(true);
+    try {
+      const longestPass = Math.max(...layers.map((layer) => layer.duration), 1500);
+      const captureMs = Math.min(longestPass + 1000, 120_000);
+      startMasterCapture();
+      await new Promise((resolve) => window.setTimeout(resolve, captureMs));
+      const blob = await finishMasterCapture();
+      if (blob) {
+        downloadBlob(
+          blob,
+          `fragment-memory-stack-${Date.now()}.${extensionForMime(blob.type)}`,
+        );
+      }
+    } finally {
+      setIsExportingAudio(false);
+    }
+  }, [ensureContext, finishMasterCapture, isExportingAudio, startMasterCapture]);
 
   // ── Parameter sync effects ────────────────────────────────────────────
   useEffect(() => {
@@ -1163,6 +1265,7 @@ export function useGranularApp() {
     autoDensity, setAutoDensity,
     isLooping, isRecording, loopIteration,
     startRecording, stopRecording, clearLoop,
+    sessionRecordingBlob, saveSessionRecording,
     // Bus A reverb
     reverbMix,   setReverbMix,
     reverbSize,  setReverbSize,
@@ -1198,6 +1301,7 @@ export function useGranularApp() {
     // Palimpsest layering
     palimpsestLayers, isPalimpsestRecording,
     startPalimpsestRecording, stopPalimpsestRecording, clearPalimpsest,
+    saveStackMemoryToFile, isExportingAudio,
   };
 }
 

@@ -48,6 +48,8 @@ export function StackingMemoryPanel({
   onStartRecording,
   onStopRecording,
   onClear,
+  onSaveToFile,
+  isExporting,
   disabled,
 }: {
   layers: PalimpsestLayer[];
@@ -63,6 +65,8 @@ export function StackingMemoryPanel({
   onStartRecording: () => void;
   onStopRecording: () => void;
   onClear: () => void;
+  onSaveToFile: () => void;
+  isExporting: boolean;
   disabled: boolean;
 }) {
   const theme = useTheme();
@@ -236,6 +240,18 @@ export function StackingMemoryPanel({
         >
           R
         </kbd>
+
+        {/* Save */}
+        <button
+          type="button"
+          disabled={disabled || layers.length === 0 || isExporting}
+          onClick={onSaveToFile}
+          className="shrink-0 transition-opacity hover:opacity-60 disabled:opacity-25"
+          style={{ fontSize: fs(9), color: theme.colors.ink4 }}
+          title="Save stack memory mix to file"
+        >
+          {isExporting ? "…" : "save"}
+        </button>
 
         {/* Clear */}
         <button

@@ -33,6 +33,8 @@ export function GranularLayout(props: GranularViewModel) {
     startRecording,
     stopRecording,
     clearLoop,
+    sessionRecordingBlob,
+    saveSessionRecording,
     reverbMix,
     setReverbMix,
     reverbSize,
@@ -90,6 +92,8 @@ export function GranularLayout(props: GranularViewModel) {
     startPalimpsestRecording,
     stopPalimpsestRecording,
     clearPalimpsest,
+    saveStackMemoryToFile,
+    isExportingAudio,
   } = props;
 
   useEffect(() => {
@@ -156,6 +160,15 @@ export function GranularLayout(props: GranularViewModel) {
               >
                 loop ×{loopIteration + 1}{loopIteration >= 5 ? " · fading…" : ""}
               </span>
+              <button
+                type="button"
+                onClick={saveSessionRecording}
+                disabled={!sessionRecordingBlob}
+                className="rounded-full px-3 py-1 transition-opacity disabled:opacity-30"
+                style={{ fontSize: fs(11), border: `1px solid ${theme.colors.borderMid}`, color: theme.colors.ink2, background: "transparent" }}
+              >
+                save
+              </button>
               <button
                 type="button"
                 onClick={clearLoop}
@@ -415,6 +428,8 @@ export function GranularLayout(props: GranularViewModel) {
             onStartRecording={startPalimpsestRecording}
             onStopRecording={stopPalimpsestRecording}
             onClear={clearPalimpsest}
+            onSaveToFile={saveStackMemoryToFile}
+            isExporting={isExportingAudio}
             disabled={sounds.length === 0}
           />
         </div>
